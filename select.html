@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CNReader</title>
+  <style>
+    @font-face {
+      font-family: 'DFFangSong';
+      src: url('DFFangSong1B Regular.ttf') format('truetype');
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: white;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+
+    #gridCanvas {
+      cursor: pointer;
+    }
+
+    #siteTitle {
+      position: absolute;
+      left: 50%;
+      top: 60px;
+      transform: translate(-50%, -50%);
+      font-family: 'Times New Roman', serif;
+      font-size: 42px;
+      line-height: 1;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 100;
+    }
+
+    #contentModeToggle {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: stretch;
+      padding: 0;
+      overflow: hidden;
+      background: white;
+      border: 2px solid black;
+      border-radius: 6px;
+      color: black;
+      font-family: 'Times New Roman', serif;
+      line-height: 1;
+      user-select: none;
+      touch-action: manipulation;
+      z-index: 90;
+    }
+
+    #contentModeToggle::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 2px;
+      background: black;
+      transform: translateX(-1px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    #contentModeToggleThumb {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 50%;
+      background: black;
+      transform: translateX(0);
+      transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    #contentModeToggle.phrases-selected #contentModeToggleThumb {
+      transform: translateX(100%);
+    }
+
+    .content-mode-label {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      padding: 0;
+      appearance: none;
+      background: transparent;
+      border: 0;
+      color: black;
+      cursor: pointer;
+      font: inherit;
+      line-height: inherit;
+      transition: color 0.16s ease;
+      z-index: 2;
+    }
+
+    .content-mode-label:focus-visible {
+      outline: 2px solid white;
+      outline-offset: -4px;
+    }
+
+    .content-mode-label[aria-selected="true"] {
+      color: white;
+    }
+
+    #selectionBar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      background: black;
+      pointer-events: none;
+    }
+    #selectionPrompt {
+      position: fixed;
+      font-family: 'Times New Roman', serif;
+      color: white;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+    }
+    #continueButton {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      background: black;
+      color: white;
+      font-family: 'Times New Roman', serif;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #backButton {
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      background: black;
+      color: white;
+      font-family: 'Times New Roman', serif;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #navButtons {
+      position: fixed;
+      display: flex;
+      align-items: center;
+    }
+
+    .nav-btn {
+      background: black;
+      color: white;
+      font-family: 'Times New Roman', serif;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #popupOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    #popupWindow {
+      position: relative;
+      background: white;
+      transform-origin: center center;
+    }
+
+    #popupCloseBtn {
+      position: absolute;
+      background: black;
+      color: white;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Times New Roman', serif;
+      line-height: 1;
+    }
+
+    #popupChar {
+      position: absolute;
+      font-family: 'DFFangSong', serif;
+      color: black;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    #popupPinyin {
+      position: absolute;
+      font-family: 'Times New Roman', serif;
+      color: black;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    #popupDefinition {
+      position: absolute;
+      font-family: 'Times New Roman', serif;
+      color: black;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    #popupExamples {
+      position: absolute;
+      font-family: 'Times New Roman', serif;
+      color: black;
+      line-height: 1.3;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="siteTitle" aria-label="CNReader">
+    <span id="siteTitleC">C</span><span id="siteTitleN">N</span><span id="siteTitleReader">Reader</span>
+  </div>
+  <div id="contentModeToggle" role="tablist" aria-label="Worksheet content">
+    <span id="contentModeToggleThumb" aria-hidden="true"></span>
+    <button class="content-mode-label" id="contentModeWords" type="button" role="tab" aria-selected="true" aria-controls="gridCanvas" data-content-mode="words">Words</button>
+    <button class="content-mode-label" id="contentModePhrases" type="button" role="tab" aria-selected="false" aria-controls="gridCanvas" data-content-mode="phrases" tabindex="-1">Phrases</button>
+  </div>
+  <canvas id="gridCanvas"></canvas>
+
+  <div id="navButtons">
+    <button class="nav-btn" id="navLeft">&lt;</button>
+    <button class="nav-btn" id="navRight">&gt;</button>
+  </div>
+
+  <div id="popupOverlay">
+    <div id="popupWindow">
+      <span id="popupChar"></span>
+      <span id="popupPinyin"></span>
+      <div id="popupDefinition"></div>
+      <div id="popupExamples"></div>
+      <button id="popupCloseBtn">&#10005;</button>
+    </div>
+  </div>
+
+  <div id="selectionBar"></div>
+  <div id="selectionPrompt">Please select words</div>
+  <button id="continueButton">Continue</button>
+  <button id="backButton">Back</button>
+
+  <script src="unit-data.js?v=ten-units-2"></script>
+  <script src="phrase-data.js?v=ten-units-3"></script>
+  <script src="progress-backup.js?v=5"></script>
+  <script src="select.js?v=tab-title-1"></script>
+</body>
+</html>

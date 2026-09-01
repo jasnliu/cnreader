@@ -1,0 +1,13 @@
+# Curriculum and build-only source data: the runnable site uses compiled JavaScript data.
+/Characters/
+/Pinyin/
+/Examples/
+/Phrases/
+/PPinyin/
+/PDefinitions/
+*.txt
+
+# Local and generated development artifacts.
+.DS_Store
+__pycache__/
+*.py[cod]

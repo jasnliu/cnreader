@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CNReader</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: white;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+
+    #worksheetCanvas {
+      display: block;
+    }
+
+    #siteTitle {
+      position: absolute;
+      left: 50%;
+      top: 60px;
+      transform: translate(-50%, -50%);
+      font-family: 'Times New Roman', serif;
+      font-size: 42px;
+      line-height: 1;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 100;
+    }
+
+    #leftArrow, #rightArrow {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 40px;
+      height: 40px;
+      background: black;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Times New Roman', serif;
+      font-size: 24px;
+      cursor: pointer;
+      user-select: none;
+      z-index: 10;
+      transition: opacity 0.15s;
+    }
+
+    #leftArrow {
+      left: 0;
+      border-radius: 0 8px 8px 0;
+    }
+
+    #rightArrow {
+      right: 0;
+      border-radius: 8px 0 0 8px;
+    }
+
+    #leftArrow:hover, #rightArrow:hover {
+      opacity: 0.7;
+    }
+
+    #backButton {
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      background: black;
+      color: white;
+      font-family: 'Times New Roman', serif;
+      font-size: 30px;
+      border: none;
+      cursor: pointer;
+      width: 250px;
+      height: 75px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-top-left-radius: 15px;
+      box-shadow: 0px -4px 6px rgba(0, 0, 0, 0.3);
+      z-index: 10;
+      transition: transform 0.2s;
+    }
+
+    #backButton:hover {
+      transform: scale(1.1);
+    }
+
+    #pageIndicator {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      background: black;
+      color: white;
+      font-family: 'Times New Roman', serif;
+      font-size: 16px;
+      padding: 6px 16px;
+      border-radius: 0 8px 0 0;
+      z-index: 10;
+      user-select: none;
+    }
+
+    #downloadButton {
+      position: fixed;
+      background: black;
+      color: white;
+      border: none;
+      cursor: pointer;
+      width: 60px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      box-shadow: 0px -4px 6px rgba(0, 0, 0, 0.3);
+      z-index: 10;
+      transition: transform 0.2s;
+    }
+
+    #downloadButton:hover {
+      transform: scale(1.05);
+    }
+
+    #downloadButton svg {
+      width: 30px;
+      height: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div id="siteTitle" aria-label="CNReader">
+    <span id="siteTitleC">C</span><span id="siteTitleN">N</span><span id="siteTitleReader">Reader</span>
+  </div>
+  <canvas id="worksheetCanvas"></canvas>
+  <button id="backButton">Back</button>
+  <button id="downloadButton">
+    <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+  </button>
+  <script src="unit-data.js?v=ten-units-2"></script>
+  <script src="phrase-data.js?v=ten-units-3"></script>
+  <script src="progress-backup.js?v=5"></script>
+  <script src="worksheet.js?v=mixed-worksheet-1"></script>
+</body>
+</html>

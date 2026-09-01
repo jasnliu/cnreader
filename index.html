@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CNReader</title>
+  <style>
+    @font-face {
+      font-family: 'DFFangSong';
+      src: url('DFFangSong1B Regular.ttf') format('truetype');
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: white;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+
+    #gridCanvas,
+    #phrasesGridCanvas {
+      display: block;
+      cursor: pointer;
+    }
+
+    #phrasesGridCanvas {
+      display: none;
+    }
+
+    #wordsGridHeaderOutline,
+    #phrasesGridHeaderOutline,
+    #gridXpOutline {
+      position: absolute;
+      display: none;
+      align-items: center;
+      gap: 11px;
+      padding: 0 14px;
+      background: white;
+      border-style: solid solid none;
+      border-color: black;
+      cursor: text;
+      overflow: hidden;
+      z-index: 0;
+    }
+
+    #gridXpOutline {
+      justify-content: center;
+      color: black;
+      font-family: 'Times New Roman', serif;
+      font-size: 20px;
+      cursor: default;
+      pointer-events: none;
+    }
+
+    #wordsGridSearchIcon,
+    #phrasesGridSearchIcon {
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      color: black;
+      pointer-events: none;
+    }
+
+    #wordsGridSearchInput,
+    #phrasesGridSearchInput {
+      flex: 1 1 auto;
+      min-width: 0;
+      height: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: black;
+      font-family: 'Times New Roman', 'DFFangSong', serif;
+      font-size: 15px;
+      line-height: 1;
+    }
+
+    #wordsGridSearchInput::placeholder,
+    #phrasesGridSearchInput::placeholder {
+      color: #666666;
+      opacity: 1;
+    }
+
+    #readingContent {
+      display: none;
+      width: min(1000px, calc(100% - 40px));
+      margin: 0 auto;
+      padding-bottom: 80px;
+      color: black;
+      font-family: 'DFFangSong', serif;
+      text-align: left;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      cursor: text;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #readingContent .reading-character {
+      cursor: text;
+    }
+
+    #readingContent .reading-character-selected {
+      background-color: #ffeb3b;
+    }
+
+    #readingCornerOutline {
+      position: fixed;
+      top: 0;
+      right: 0;
+      display: none;
+      background-color: white;
+      pointer-events: auto;
+      border-left-style: solid;
+      border-bottom-style: solid;
+      border-top: none;
+      border-right: none;
+      transform: scale(0);
+      transform-origin: top right;
+      will-change: transform;
+      z-index: 80;
+    }
+
+    #readingPanelContent {
+      width: 100%;
+      height: 100%;
+      padding: 24px 28px 22px 30px;
+      overflow-x: hidden;
+      overflow-y: hidden;
+      color: black;
+    }
+
+    #readingSinglePanel,
+    #readingPhrasePanel {
+      min-height: 100%;
+    }
+
+    #readingSingleHeader {
+      display: flex;
+      align-items: baseline;
+      gap: 22px;
+    }
+
+    #readingSingleCharacter {
+      flex: 0 0 auto;
+      font-family: 'DFFangSong', serif;
+      font-size: 64px;
+      line-height: 1;
+    }
+
+    #readingSinglePinyin {
+      min-width: 0;
+      font-family: 'Times New Roman', serif;
+      font-size: 21px;
+      line-height: 1.2;
+    }
+
+    #readingSingleDefinition {
+      margin-top: 22px;
+      font-family: 'Times New Roman', serif;
+      font-size: 18px;
+      line-height: 1.35;
+    }
+
+    #readingPhrasePanel {
+      display: none;
+      flex-direction: column;
+    }
+
+    #readingPhrasePreview {
+      font-family: 'DFFangSong', serif;
+      font-size: 34px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    #readingPhrasePinyin {
+      margin-top: 14px;
+      font-family: 'Times New Roman', serif;
+      font-size: 16px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+
+    #readingPhraseEnglish {
+      margin-top: auto;
+      padding-top: 24px;
+      font-family: 'Times New Roman', serif;
+      font-size: 19px;
+      line-height: 1.35;
+    }
+
+    #readingCornerOutline.reading-corner-left {
+      left: 0;
+      right: auto;
+      border-left-style: none;
+      border-right-style: solid;
+      transform-origin: top left;
+    }
+
+    #readingCornerOutline.reading-corner-visible {
+      animation-name: reading-corner-grow;
+      animation-timing-function: ease-out;
+      animation-fill-mode: both;
+    }
+
+    @keyframes reading-corner-grow {
+      from { transform: scale(0); }
+      to { transform: scale(1); }
+    }
+
+    #siteTitle {
+      position: absolute;
+      left: 50%;
+      top: 60px;
+      transform: translate(-50%, -50%);
+      font-family: 'Times New Roman', serif;
+      font-size: 42px;
+      line-height: 1;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 100;
+    }
+
+    #contentModeToggle {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: stretch;
+      padding: 0;
+      overflow: hidden;
+      background: white;
+      border: 2px solid black;
+      border-radius: 6px;
+      color: black;
+      font-family: 'Times New Roman', serif;
+      line-height: 1;
+      user-select: none;
+      touch-action: manipulation;
+      z-index: 90;
+    }
+
+    #contentModeToggle::before,
+    #contentModeToggle::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: black;
+      transform: translateX(-1px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    #contentModeToggle::before {
+      left: 33.333333%;
+    }
+
+    #contentModeToggle::after {
+      left: 66.666667%;
+    }
+
+    #contentModeToggleThumb {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 33.333333%;
+      background: black;
+      transform: translateX(0);
+      transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    #contentModeToggle.phrases-selected #contentModeToggleThumb {
+      transform: translateX(100%);
+    }
+
+    #contentModeToggle.reading-selected #contentModeToggleThumb {
+      transform: translateX(200%);
+    }
+
+    .content-mode-label {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      padding: 0;
+      appearance: none;
+      background: transparent;
+      border: 0;
+      color: black;
+      cursor: pointer;
+      font: inherit;
+      line-height: inherit;
+      transition: color 0.16s ease;
+      z-index: 2;
+    }
+
+    .content-mode-label:focus-visible {
+      outline: 2px solid white;
+      outline-offset: -4px;
+    }
+
+    .content-mode-label[aria-selected="true"] {
+      color: white;
+    }
+
+    #startButton {
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      background: black;
+      color: white;
+      font-family: 'Times New Roman', serif;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #plusButton {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      background: black;
+      color: white;
+      font-family: 'Times New Roman', serif;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      z-index: 10;
+    }
+
+    #circleCanvas {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    #navButtons {
+      position: fixed;
+      display: flex;
+      align-items: center;
+      z-index: 20;
+    }
+
+    .nav-btn {
+      background: black;
+      color: white;
+      font-family: 'Times New Roman', serif;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #popupOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    #popupWindow {
+      position: relative;
+      background: white;
+      transform-origin: center center;
+    }
+
+    #popupCloseBtn {
+      position: absolute;
+      background: black;
+      color: white;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Times New Roman', serif;
+      line-height: 1;
+    }
+
+    #popupChar {
+      position: absolute;
+      font-family: 'DFFangSong', serif;
+      color: black;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    #popupPinyin {
+      position: absolute;
+      font-family: 'Times New Roman', serif;
+      color: black;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    #popupDefinition {
+      position: absolute;
+      font-family: 'Times New Roman', serif;
+      color: black;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    #popupExamples {
+      position: absolute;
+      font-family: 'Times New Roman', serif;
+      color: black;
+      line-height: 1.3;
+      pointer-events: none;
+    }
+
+    #popupSkipBtn {
+      position: absolute;
+      background: black;
+      color: white;
+      font-family: 'Times New Roman', serif;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #skipPopupOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+    }
+
+    #skipPopupWindow {
+      position: relative;
+      background: white;
+      transform-origin: center center;
+    }
+
+    #skipPopupText {
+      position: absolute;
+      font-family: 'Times New Roman', serif;
+      color: black;
+      line-height: 1;
+      pointer-events: none;
+      text-align: center;
+    }
+
+    #skipPopupYesBtn {
+      position: absolute;
+      background: black;
+      color: white;
+      font-family: 'Times New Roman', serif;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #skipPopupNoBtn {
+      position: absolute;
+      background: white;
+      color: black;
+      font-family: 'Times New Roman', serif;
+      border: 2px solid black;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="siteTitle" aria-label="CNReader">
+    <span id="siteTitleC">C</span><span id="siteTitleN">N</span><span id="siteTitleReader">Reader</span>
+  </div>
+  <div id="contentModeToggle" role="tablist" aria-label="Content view">
+    <span id="contentModeToggleThumb" aria-hidden="true"></span>
+    <button class="content-mode-label" id="contentModeWords" type="button" role="tab" aria-selected="true" aria-controls="gridCanvas" data-content-mode="words">Words</button>
+    <button class="content-mode-label" id="contentModePhrases" type="button" role="tab" aria-selected="false" aria-controls="phrasesGridCanvas" data-content-mode="phrases" tabindex="-1">Phrases</button>
+    <button class="content-mode-label" id="contentModeReading" type="button" role="tab" aria-selected="false" aria-controls="readingContent" data-content-mode="reading" tabindex="-1">Reading</button>
+  </div>
+  <div id="gridXpOutline" aria-label="Experience points"><span id="gridXpValue">0 XP</span></div>
+  <div id="wordsGridHeaderOutline" role="search">
+    <svg id="wordsGridSearchIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"></circle>
+      <path d="M15.5 15.5L21 21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+    </svg>
+    <input
+      id="wordsGridSearchInput"
+      type="text"
+      aria-label="Search words by pinyin, Chinese character, or English definition"
+      placeholder="Search pinyin, chinese, or english"
+      autocomplete="off"
+      autocapitalize="off"
+      spellcheck="false"
+    >
+  </div>
+  <div id="phrasesGridHeaderOutline" role="search">
+    <svg id="phrasesGridSearchIcon" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"></circle>
+      <path d="M15.5 15.5L21 21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+    </svg>
+    <input
+      id="phrasesGridSearchInput"
+      type="text"
+      aria-label="Search phrases by pinyin, Chinese character, or English definition"
+      placeholder="Search pinyin, chinese, or english"
+      autocomplete="off"
+      autocapitalize="off"
+      spellcheck="false"
+    >
+  </div>
+  <canvas id="gridCanvas" role="tabpanel" aria-labelledby="contentModeWords"></canvas>
+  <canvas id="phrasesGridCanvas" role="tabpanel" aria-labelledby="contentModePhrases"></canvas>
+  <div id="readingContent" role="tabpanel" aria-labelledby="contentModeReading" aria-label="Reading excerpt"></div>
+  <div id="readingCornerOutline" aria-live="polite">
+    <div id="readingPanelContent">
+      <div id="readingSinglePanel">
+        <div id="readingSingleHeader">
+          <span id="readingSingleCharacter"></span>
+          <span id="readingSinglePinyin"></span>
+        </div>
+        <div id="readingSingleDefinition"></div>
+      </div>
+      <div id="readingPhrasePanel">
+        <div id="readingPhrasePreview"></div>
+        <div id="readingPhrasePinyin"></div>
+        <div id="readingPhraseEnglish"></div>
+      </div>
+    </div>
+  </div>
+  <canvas id="circleCanvas"></canvas>
+  <button id="startButton">Start</button>
+  <button id="plusButton">+</button>
+
+  <div id="navButtons">
+    <button class="nav-btn" id="navLeft">&lt;</button>
+    <button class="nav-btn" id="navRight">&gt;</button>
+  </div>
+
+  <div id="popupOverlay">
+    <div id="popupWindow">
+      <span id="popupChar"></span>
+      <span id="popupPinyin"></span>
+      <div id="popupDefinition"></div>
+      <div id="popupExamples"></div>
+      <button id="popupCloseBtn">&#10005;</button>
+      <button id="popupSkipBtn">Skip to here</button>
+    </div>
+  </div>
+
+  <div id="skipPopupOverlay">
+    <div id="skipPopupWindow">
+      <div id="skipPopupText">Are you sure you want to skip to here?</div>
+      <button id="skipPopupYesBtn">Yes</button>
+      <button id="skipPopupNoBtn">No</button>
+    </div>
+  </div>
+
+  <script src="ch1_extracted.js?v=1"></script>
+  <script src="reading-dictionary.js?v=1"></script>
+  <script src="unit-data.js?v=ten-units-2"></script>
+  <script src="phrase-data.js?v=ten-units-3"></script>
+  <script src="xp-system.js?v=xp-animation-duration-1"></script>
+  <script src="progress-backup.js?v=5"></script>
+  <script src="script.js?v=xp-animation-1"></script>
+</body>
+</html>

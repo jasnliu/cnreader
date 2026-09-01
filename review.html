@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CNReader</title>
+  <style>
+    @font-face {
+      font-family: 'DFFangSong';
+      src: url('DFFangSong1B Regular.ttf') format('truetype');
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: white;
+      overflow: hidden;
+    }
+
+    #reviewTypeControls {
+      position: fixed;
+      top: 18px;
+      left: 20px;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      font-family: 'Times New Roman', serif;
+      font-size: 18px;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    #reviewTypeControls label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .review-format-option input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: black;
+      cursor: pointer;
+    }
+
+    .review-mode-control {
+      padding-right: 18px;
+      border-right: 1px solid #b5b5b5;
+    }
+
+    #reviewTargetedMode {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .review-switch-track {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      border: 1px solid black;
+      border-radius: 12px;
+      background: #cccccc;
+      transition: background 0.18s ease;
+    }
+
+    .review-switch-track::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      transition: transform 0.18s ease;
+    }
+
+    #reviewTargetedMode:checked + .review-switch-track {
+      background: black;
+    }
+
+    #reviewTargetedMode:checked + .review-switch-track::after {
+      transform: translateX(20px);
+    }
+
+    #reviewTargetedMode:focus-visible + .review-switch-track {
+      outline: 2px solid #4CAF50;
+      outline-offset: 2px;
+    }
+
+    #reviewModeText {
+      min-width: 68px;
+    }
+
+    #reviewTypeControls .review-question-count-option {
+      padding-left: 18px;
+      border-left: 1px solid #b5b5b5;
+      cursor: default;
+    }
+
+    #reviewQuestionCount {
+      width: 58px;
+      height: 28px;
+      margin: 0;
+      border: 1px solid black;
+      outline: none;
+      background: white;
+      color: black;
+      font-family: 'Times New Roman', serif;
+      font-size: 17px;
+      text-align: center;
+    }
+
+    #reviewQuestionCount:focus {
+      outline: 2px solid #4CAF50;
+      outline-offset: 1px;
+    }
+  </style>
+</head>
+<body>
+  <div id="reviewTypeControls" aria-label="Review controls">
+    <label class="review-mode-control">
+      <input type="checkbox" id="reviewTargetedMode">
+      <span class="review-switch-track" aria-hidden="true"></span>
+      <span id="reviewModeText">Random</span>
+    </label>
+    <label class="review-format-option"><input type="checkbox" id="reviewMultipleChoice" checked>Multiple Choice</label>
+    <label class="review-format-option"><input type="checkbox" id="reviewWriting" checked>Pinyin input</label>
+    <label class="review-format-option" id="reviewDefinitionOption"><input type="checkbox" id="reviewDefinition" checked>Definition</label>
+    <label class="review-question-count-option" for="reviewQuestionCount">
+      Questions
+      <input type="number" id="reviewQuestionCount" min="1" step="1" value="1" inputmode="numeric">
+    </label>
+  </div>
+  <canvas id="reviewCanvas"></canvas>
+  <input type="text" id="reviewTypingInput" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" writingsuggestions="false" data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false" style="position: fixed; display: none; font-family: 'Times New Roman', serif; text-align: center; border: 1px solid black; outline: none; background: white; color: black;">
+
+  <!-- Words Missed Page -->
+  <div id="missedPage" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; z-index: 10000; overflow-y: auto;">
+    <div id="missedTitle" style="font-family: 'Times New Roman', serif; text-align: center; padding-top: 32px; font-size: 40px;">Mistakes</div>
+    <canvas id="missedCanvas"></canvas>
+    <div id="missedAccuracy" style="font-family: 'Times New Roman', serif; text-align: center; margin-top: 24px; font-size: 22px;">Accuracy</div>
+    <div id="missedXp" style="font-family: 'Times New Roman', serif; text-align: center; margin-top: 10px; font-size: 22px;">0 XP</div>
+    <button id="okButton" style="position: fixed; bottom: 0; right: 0; background: black; color: white; font-family: 'Times New Roman', serif; border: none; cursor: pointer; border-top-left-radius: 15px; box-shadow: -4px -4px 6px rgba(0, 0, 0, 0.3);">Ok</button>
+  </div>
+
+  <script src="unit-data.js?v=ten-units-2"></script>
+  <script src="phrase-data.js?v=ten-units-3"></script>
+  <script src="phrase-quiz-logic.js?v=definition-optional-words-1"></script>
+  <script src="custom-quiz-logic.js?v=definition-questions-2"></script>
+  <script src="word-details.js?v=dynamic-units-1"></script>
+  <script src="xp-system.js?v=xp-animation-duration-1"></script>
+  <script src="progress-backup.js?v=5"></script>
+  <script src="quiz-engine.js?v=perfect-result-heading-1" data-quiz-mode="review"></script>
+</body>
+</html>
