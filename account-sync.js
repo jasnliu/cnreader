@@ -7,6 +7,7 @@
   });
   const SESSION_KEY = 'cnreaderAccountSession';
   const HYDRATED_USER_KEY = 'cnreaderAccountHydratedUser';
+  const PROFILE_CACHE_KEY_PREFIX = 'cnreaderAccountProfile_';
   const SYNC_DELAY_MS = 800;
   const ACCOUNT_SETTINGS_CLOSE_DURATION_MS = 70;
   const ACCOUNT_SETTINGS_BLUR_AMOUNT = 5;
@@ -69,6 +70,33 @@
   function getUserId(session) {
     const payload = decodeJwtPayload(session && session.access_token);
     return payload && typeof payload.sub === 'string' ? payload.sub : null;
+  }
+
+  function getAccountProfileCacheKey(session) {
+    const userId = getUserId(session);
+    return userId ? PROFILE_CACHE_KEY_PREFIX + userId : null;
+  }
+
+  function readCachedAccountProfile(session) {
+    const cacheKey = getAccountProfileCacheKey(session);
+    if (!cacheKey) return null;
+    try {
+      const profile = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      return profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : null;
+    } catch (error) {
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+  }
+
+  function saveCachedAccountProfile(session, profile) {
+    const cacheKey = getAccountProfileCacheKey(session);
+    if (!cacheKey || !profile || typeof profile !== 'object') return;
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(profile));
+    } catch (error) {
+      console.warn('CNReader account profile cache could not be saved:', error);
+    }
   }
 
   function authHeaders(session, contentType) {
@@ -152,7 +180,7 @@
     const metadata = accountProfile && accountProfile.user_metadata || {};
     const email = accountProfile && accountProfile.email || payload.email || '';
     return {
-      name: metadata.full_name || metadata.name || email || 'Signed in',
+      name: metadata.full_name || metadata.name || (accountProfile ? email : ''),
       email: email,
       avatarUrl: metadata.avatar_url || metadata.picture || '',
     };
@@ -170,7 +198,10 @@
         accountAvatar.hidden = true;
         accountAvatar.removeAttribute('src');
       }
-      if (accountName) accountName.textContent = '';
+      if (accountName) {
+        accountName.textContent = '';
+        accountName.hidden = false;
+      }
       if (accountEmail) accountEmail.textContent = '';
       return;
     }
@@ -178,7 +209,10 @@
     accountButton.setAttribute('data-signed-in', 'true');
     accountButton.setAttribute('aria-label', 'Account settings for ' + (details.name || details.email));
     if (accountGuestLabel) accountGuestLabel.hidden = true;
-    if (accountName) accountName.textContent = details.name;
+    if (accountName) {
+      accountName.textContent = details.name;
+      accountName.hidden = !details.name;
+    }
     if (accountEmail) accountEmail.textContent = details.email;
     if (accountAvatar) {
       accountAvatar.hidden = !details.avatarUrl;
@@ -299,6 +333,7 @@
         email: updatedUser.email || accountProfile && accountProfile.email || getAccountDetails(session).email,
         user_metadata: Object.assign({}, currentMetadata, updatedUser.user_metadata || {}, { full_name: name }),
       });
+      saveCachedAccountProfile(session, accountProfile);
       updateAccountControl();
       setAccountSettingsMessage('Saved.');
       return true;
@@ -356,19 +391,26 @@
       consumeOAuthReturn();
       observeProgressStorage();
       const stored = getSession();
+      accountProfile = readCachedAccountProfile(stored);
       updateAccountControl();
       if (!stored) return false;
       try {
         const session = await refreshSessionIfNeeded(stored);
         const userId = getUserId(session);
-        const cloudProgress = await loadCloudProgress(session);
-        try {
-          accountProfile = await loadAccountProfile(session);
-        } catch (error) {
-          accountProfile = null;
+        const cloudProgressPromise = loadCloudProgress(session);
+        const profilePromise = loadAccountProfile(session).then(function (profile) {
+          if (profile) {
+            accountProfile = profile;
+            saveCachedAccountProfile(session, profile);
+            updateAccountControl();
+          }
+          return profile;
+        }).catch(function (error) {
           console.warn('CNReader account profile could not be loaded:', error);
-        }
-        updateAccountControl();
+          return null;
+        });
+        const cloudProgress = await cloudProgressPromise;
+        await profilePromise;
         if (cloudProgress) {
           if (userId && localStorage.getItem(HYDRATED_USER_KEY) !== userId) {
             restoringProgress = true;

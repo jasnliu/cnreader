@@ -135,6 +135,18 @@ function activeSession() {
   });
 }
 
+const ACCOUNT_PROFILE_CACHE_KEY = 'cnreaderAccountProfile_00000000-0000-0000-0000-000000000001';
+
+function accountProfile(fullName) {
+  return {
+    email: 'learner@example.com',
+    user_metadata: {
+      full_name: fullName,
+      avatar_url: 'https://example.com/learner.png',
+    },
+  };
+}
+
 (async function () {
   const existing = createHarness({
     entries: [
@@ -172,26 +184,36 @@ function activeSession() {
   await new Promise(function (resolve) { setTimeout(resolve, 900); });
   assert.equal(newAccount.requests[2].body.progress.data.charProgress, '{"0":4}', 'Progress made after sign-in must update the account cloud save');
 
+  const cachedProfile = createHarness({
+    accountUi: true,
+    entries: [
+      ['cnreaderAccountSession', activeSession()],
+      [ACCOUNT_PROFILE_CACHE_KEY, JSON.stringify(accountProfile('Cached Reader'))],
+    ],
+    replies: [
+      { body: [] },
+      { body: accountProfile('Fresh Reader') },
+      { body: [{ user_id: '00000000-0000-0000-0000-000000000001' }] },
+    ],
+  });
+  assert.equal(cachedProfile.elements.accountName.textContent, 'Cached Reader', 'A profile cache must render before network requests finish');
+  assert.equal(cachedProfile.elements.accountAvatar.src, 'https://example.com/learner.png', 'A profile cache must render the saved avatar immediately');
+  await cachedProfile.windowFake.CNReaderAccount.initialize();
+  assert.equal(cachedProfile.elements.accountName.textContent, 'Fresh Reader', 'Supabase must refresh the locally cached display name');
+  assert.deepEqual(
+    JSON.parse(cachedProfile.storage.getItem(ACCOUNT_PROFILE_CACHE_KEY)),
+    accountProfile('Fresh Reader'),
+    'A successful Supabase profile fetch must refresh the user-scoped cache'
+  );
+
   const profile = createHarness({
     accountUi: true,
     entries: [['cnreaderAccountSession', activeSession()]],
     replies: [
       { body: [] },
-      { body: {
-        email: 'learner@example.com',
-        user_metadata: {
-          full_name: 'Learner Example',
-          avatar_url: 'https://example.com/learner.png',
-        },
-      } },
+      { body: accountProfile('Learner Example') },
       { body: [{ user_id: '00000000-0000-0000-0000-000000000001' }] },
-      { body: {
-        email: 'learner@example.com',
-        user_metadata: {
-          full_name: 'New Reader Name',
-          avatar_url: 'https://example.com/learner.png',
-        },
-      } },
+      { body: accountProfile('New Reader Name') },
     ],
   });
   await profile.windowFake.CNReaderAccount.initialize();
@@ -222,20 +244,18 @@ function activeSession() {
   assert.match(profile.requests[3].url, /\/auth\/v1\/user$/, 'Save must target Supabase user metadata');
   assert.deepEqual(profile.requests[3].body, { data: { full_name: 'New Reader Name' } }, 'Save must persist only the chosen display name');
   assert.equal(profile.elements.accountName.textContent, 'New Reader Name', 'The profile button must update only after a successful save');
-  assert.equal(profile.storage.getItem('cnreaderAccountProfile'), null, 'Profile data must not be cached in localStorage');
+  assert.deepEqual(
+    JSON.parse(profile.storage.getItem(ACCOUNT_PROFILE_CACHE_KEY)),
+    accountProfile('New Reader Name'),
+    'A successfully saved name must refresh only that account\'s local profile cache'
+  );
 
   const returningProfile = createHarness({
     accountUi: true,
     entries: [['cnreaderAccountSession', activeSession()]],
     replies: [
       { body: [] },
-      { body: {
-        email: 'learner@example.com',
-        user_metadata: {
-          full_name: 'New Reader Name',
-          avatar_url: 'https://example.com/learner.png',
-        },
-      } },
+      { body: accountProfile('New Reader Name') },
       { body: [{ user_id: '00000000-0000-0000-0000-000000000001' }] },
     ],
   });
@@ -272,7 +292,7 @@ function activeSession() {
   const pages = ['index.html', 'quiz.html', 'phrase-quiz.html', 'review.html', 'custom-quiz.html', 'custom-test.html', 'select.html', 'worksheet.html'];
   pages.forEach(function (page) {
     const html = fs.readFileSync(path.join(__dirname, '..', page), 'utf8');
-    assert.ok(html.indexOf('progress-backup.js?v=6') < html.indexOf('account-sync.js?v=2'), page + ' must load the current account sync after progress backup');
+    assert.ok(html.indexOf('progress-backup.js?v=6') < html.indexOf('account-sync.js?v=3'), page + ' must load the current account sync after progress backup');
   });
   const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   assert.match(indexHtml, /id="accountButton"/, 'The main page must provide a Google sign-in control');
