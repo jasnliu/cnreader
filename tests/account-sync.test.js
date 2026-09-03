@@ -21,8 +21,35 @@ function createHarness(options) {
   const storage = createStorage(options.entries);
   const requests = [];
   const assignedUrls = [];
+  const animationFrames = [];
   let reloadCount = 0;
   const listeners = {};
+  const elements = {};
+  if (options.accountUi) {
+    [
+      'accountButton', 'accountAvatar', 'accountName', 'accountEmail', 'accountGuestLabel', 'accountStatus',
+      'accountSettingsOverlay', 'accountSettingsWindow', 'accountSettingsClose', 'accountSettingsName',
+      'accountSettingsEmail', 'accountSettingsAvatar', 'accountSettingsSave', 'accountSettingsSignOut', 'accountSettingsMessage',
+    ].forEach(function (id) {
+      elements[id] = {
+        hidden: false,
+        textContent: '',
+        value: '',
+        disabled: false,
+        src: '',
+        alt: '',
+        attributes: {},
+        style: {},
+        handlers: {},
+        addEventListener(name, handler) { this.handlers[name] = handler; },
+        click() { return this.handlers.click && this.handlers.click({ target: this, preventDefault() {} }); },
+        focus() {},
+        getBoundingClientRect() { return { left: 16, top: 16, width: 200, height: 46 }; },
+        setAttribute(name, value) { this.attributes[name] = String(value); },
+        removeAttribute(name) { delete this.attributes[name]; },
+      };
+    });
+  }
   const location = {
     href: 'https://cnreader.vercel.app/',
     origin: 'https://cnreader.vercel.app',
@@ -34,17 +61,24 @@ function createHarness(options) {
   };
   const windowFake = {
     location,
+    innerWidth: 1000,
+    innerHeight: 800,
     history: { replaceState() {} },
     addEventListener(name, handler) { listeners[name] = handler; },
+    requestAnimationFrame(callback) {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    },
+    cancelAnimationFrame() {},
     setTimeout,
     clearTimeout,
   };
   const context = vm.createContext({
     window: windowFake,
     document: {
-      readyState: 'loading',
-      getElementById() { return null; },
-      addEventListener() {},
+      readyState: options.accountUi ? 'complete' : 'loading',
+      getElementById(id) { return elements[id] || null; },
+      addEventListener(name, handler) { listeners[name] = handler; },
     },
     localStorage: storage,
     fetch: async function (url, init) {
@@ -77,7 +111,19 @@ function createHarness(options) {
     context,
     { filename: 'account-sync.js' }
   );
-  return { storage, requests, assignedUrls, windowFake, get reloadCount() { return reloadCount; } };
+  return {
+    storage,
+    requests,
+    assignedUrls,
+    windowFake,
+    elements,
+    runNextAnimationFrame(timestamp) {
+      const callback = animationFrames.shift();
+      if (callback) callback(timestamp);
+    },
+    get animationFrameCount() { return animationFrames.length; },
+    get reloadCount() { return reloadCount; },
+  };
 }
 
 function activeSession() {
@@ -126,6 +172,77 @@ function activeSession() {
   await new Promise(function (resolve) { setTimeout(resolve, 900); });
   assert.equal(newAccount.requests[2].body.progress.data.charProgress, '{"0":4}', 'Progress made after sign-in must update the account cloud save');
 
+  const profile = createHarness({
+    accountUi: true,
+    entries: [['cnreaderAccountSession', activeSession()]],
+    replies: [
+      { body: [] },
+      { body: {
+        email: 'learner@example.com',
+        user_metadata: {
+          full_name: 'Learner Example',
+          avatar_url: 'https://example.com/learner.png',
+        },
+      } },
+      { body: [{ user_id: '00000000-0000-0000-0000-000000000001' }] },
+      { body: {
+        email: 'learner@example.com',
+        user_metadata: {
+          full_name: 'New Reader Name',
+          avatar_url: 'https://example.com/learner.png',
+        },
+      } },
+    ],
+  });
+  await profile.windowFake.CNReaderAccount.initialize();
+  assert.match(profile.requests[1].url, /\/auth\/v1\/user$/, 'The account control must load the signed-in user profile');
+  assert.equal(profile.elements.accountName.textContent, 'Learner Example', 'The account button must show the Google full name');
+  assert.equal(profile.elements.accountEmail.textContent, 'learner@example.com', 'The account button must show the signed-in email');
+  assert.equal(profile.elements.accountAvatar.src, 'https://example.com/learner.png', 'The account button must show the Google avatar');
+  assert.equal(profile.elements.accountAvatar.hidden, false, 'The Google avatar must be visible after loading');
+  await profile.elements.accountButton.click();
+  assert.equal(profile.storage.getItem('cnreaderAccountSession'), activeSession(), 'Opening account settings must not sign the user out');
+  assert.equal(profile.elements.accountSettingsOverlay.style.display, 'flex', 'Clicking the signed-in profile must open account settings');
+  assert.equal(profile.elements.accountSettingsWindow.style.transition, 'transform 0.1s linear', 'Account settings must retain the original CSS opening transition');
+  assert.equal(profile.elements.accountSettingsOverlay.style.transition, 'backdrop-filter 0.1s linear, -webkit-backdrop-filter 0.1s linear', 'Account settings blur must retain the original CSS opening transition');
+  assert.equal(profile.elements.accountSettingsName.value, 'Learner Example', 'Account settings must begin with the saved name');
+  profile.runNextAnimationFrame(0);
+  const framesBeforeClosingSettings = profile.animationFrameCount;
+  profile.elements.accountSettingsClose.click();
+  assert.equal(
+    profile.animationFrameCount,
+    framesBeforeClosingSettings + 1,
+    'Account settings must use the same frame-based close animation as grid popups'
+  );
+  profile.elements.accountSettingsName.value = 'New Reader Name';
+  assert.equal(profile.elements.accountName.textContent, 'Learner Example', 'Editing a draft name must not update the profile button before Save');
+  profile.elements.accountSettingsSave.click();
+  await new Promise(function (resolve) { setTimeout(resolve, 0); });
+  assert.equal(profile.requests[3].init.method, 'PUT', 'Save must update the signed-in user profile');
+  assert.match(profile.requests[3].url, /\/auth\/v1\/user$/, 'Save must target Supabase user metadata');
+  assert.deepEqual(profile.requests[3].body, { data: { full_name: 'New Reader Name' } }, 'Save must persist only the chosen display name');
+  assert.equal(profile.elements.accountName.textContent, 'New Reader Name', 'The profile button must update only after a successful save');
+  assert.equal(profile.storage.getItem('cnreaderAccountProfile'), null, 'Profile data must not be cached in localStorage');
+
+  const returningProfile = createHarness({
+    accountUi: true,
+    entries: [['cnreaderAccountSession', activeSession()]],
+    replies: [
+      { body: [] },
+      { body: {
+        email: 'learner@example.com',
+        user_metadata: {
+          full_name: 'New Reader Name',
+          avatar_url: 'https://example.com/learner.png',
+        },
+      } },
+      { body: [{ user_id: '00000000-0000-0000-0000-000000000001' }] },
+    ],
+  });
+  await returningProfile.windowFake.CNReaderAccount.initialize();
+  assert.match(returningProfile.requests[1].url, /\/auth\/v1\/user$/, 'A returning session must load profile data from Supabase');
+  assert.equal(returningProfile.elements.accountName.textContent, 'New Reader Name', 'A returning session must show the name saved in Supabase');
+
   const guest = createHarness({ entries: [], replies: [] });
   await guest.windowFake.CNReaderAccount.signInWithGoogle();
   assert.equal(
@@ -145,13 +262,27 @@ function activeSession() {
     'The account client must use the configured publishable key'
   );
 
+  const accountClientSource = fs.readFileSync(path.join(__dirname, '..', 'account-sync.js'), 'utf8');
+  assert.doesNotMatch(
+    accountClientSource,
+    /Progress restored from your account/,
+    'Account restoration must not leave a status message beneath the profile button'
+  );
+
   const pages = ['index.html', 'quiz.html', 'phrase-quiz.html', 'review.html', 'custom-quiz.html', 'custom-test.html', 'select.html', 'worksheet.html'];
   pages.forEach(function (page) {
     const html = fs.readFileSync(path.join(__dirname, '..', page), 'utf8');
-    assert.ok(html.indexOf('progress-backup.js?v=6') < html.indexOf('account-sync.js?v=1'), page + ' must load account sync after progress backup');
+    assert.ok(html.indexOf('progress-backup.js?v=6') < html.indexOf('account-sync.js?v=2'), page + ' must load the current account sync after progress backup');
   });
   const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   assert.match(indexHtml, /id="accountButton"/, 'The main page must provide a Google sign-in control');
+  assert.match(indexHtml, /id="accountAvatar"/, 'The main page must provide a profile avatar in the account button');
+  assert.match(indexHtml, /id="accountName"/, 'The main page must provide the signed-in name in the account button');
+  assert.match(indexHtml, /id="accountEmail"/, 'The main page must provide the signed-in email in the account button');
+  assert.match(indexHtml, /id="accountSettingsOverlay"/, 'The main page must provide an account settings popup');
+  assert.match(indexHtml, /id="accountSettingsClose"/, 'The account settings popup must provide the same-position close control');
+  assert.match(indexHtml, /id="accountSettingsSave"/, 'The account settings popup must provide a Save control');
+  assert.match(indexHtml, /id="accountSettingsSignOut"/, 'The account settings popup must provide a Sign out control');
   assert.match(indexHtml, /id="accountStatus"/, 'The main page must provide accessible account-sync status text');
   assert.match(
     indexHtml,

@@ -81,6 +81,48 @@
       font-size: 15px;
     }
 
+    #accountButton[data-signed-in="true"] {
+      display: flex;
+      align-items: center;
+      min-height: 46px;
+      max-width: min(290px, calc(100vw - 32px));
+      padding: 5px 9px 5px 5px;
+      text-align: left;
+    }
+
+    #accountAvatar {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      margin-right: 8px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #e7e7e7;
+    }
+
+    #accountProfileText {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      line-height: 1.1;
+    }
+
+    #accountName,
+    #accountEmail {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #accountName {
+      font-size: 14px;
+    }
+
+    #accountEmail {
+      margin-top: 2px;
+      font-size: 12px;
+    }
+
     #accountButton:hover,
     #accountButton:focus-visible {
       background: black;
@@ -93,6 +135,130 @@
       font-size: 12px;
       line-height: 1.15;
       text-align: left;
+    }
+
+    #accountSettingsOverlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1200;
+    }
+
+    #accountSettingsWindow {
+      position: relative;
+      width: min(600px, calc(100vw - 32px));
+      min-height: 450px;
+      padding: 42px 40px 36px;
+      background: white;
+      border: 3px solid black;
+      font-family: 'Times New Roman', serif;
+      transform-origin: center center;
+    }
+
+    #accountSettingsClose {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: black;
+      color: white;
+      cursor: pointer;
+      font-family: 'Times New Roman', serif;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    #accountSettingsHeader {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 34px;
+    }
+
+    #accountSettingsAvatar {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      background: #e7e7e7;
+      object-fit: cover;
+    }
+
+    #accountSettingsTitle {
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    #accountSettingsEmail {
+      margin-top: 7px;
+      font-size: 16px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #accountSettingsNameLabel {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 18px;
+    }
+
+    #accountSettingsName {
+      width: 100%;
+      height: 40px;
+      padding: 6px 9px;
+      border: 1px solid black;
+      border-radius: 0;
+      color: black;
+      font-family: 'Times New Roman', serif;
+      font-size: 18px;
+    }
+
+    #accountSettingsMessage {
+      min-height: 20px;
+      margin-top: 9px;
+      font-size: 14px;
+    }
+
+    #accountSettingsActions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 64px;
+    }
+
+    #accountSettingsSignOut,
+    #accountSettingsSave {
+      min-width: 104px;
+      height: 38px;
+      padding: 0 15px;
+      border: 1px solid black;
+      cursor: pointer;
+      font-family: 'Times New Roman', serif;
+      font-size: 16px;
+    }
+
+    #accountSettingsSignOut {
+      background: white;
+      color: black;
+    }
+
+    #accountSettingsSave {
+      background: black;
+      color: white;
+    }
+
+    #accountSettingsSignOut:hover,
+    #accountSettingsSignOut:focus-visible {
+      background: #eeeeee;
+    }
+
+    #accountSettingsSave:hover,
+    #accountSettingsSave:focus-visible {
+      background: #333333;
     }
 
     #wordsGridSearchIcon,
@@ -547,8 +713,34 @@
   </div>
   <div id="gridXpOutline" aria-label="Experience points"><span id="gridXpValue">0 XP</span></div>
   <div id="accountControl">
-    <button id="accountButton" type="button">Sign in with Google</button>
+    <button id="accountButton" type="button">
+      <img id="accountAvatar" alt="" hidden>
+      <span id="accountProfileText" aria-hidden="true">
+        <span id="accountName"></span>
+        <span id="accountEmail"></span>
+      </span>
+      <span id="accountGuestLabel">Sign in with Google</span>
+    </button>
     <div id="accountStatus" aria-live="polite"></div>
+  </div>
+  <div id="accountSettingsOverlay" aria-hidden="true">
+    <section id="accountSettingsWindow" role="dialog" aria-modal="true" aria-labelledby="accountSettingsTitle">
+      <button id="accountSettingsClose" type="button" aria-label="Close account settings">&#10005;</button>
+      <div id="accountSettingsHeader">
+        <img id="accountSettingsAvatar" alt="" hidden>
+        <div>
+          <div id="accountSettingsTitle">Profile settings</div>
+          <div id="accountSettingsEmail"></div>
+        </div>
+      </div>
+      <label id="accountSettingsNameLabel" for="accountSettingsName">Display name</label>
+      <input id="accountSettingsName" type="text" maxlength="80" autocomplete="name">
+      <div id="accountSettingsMessage" aria-live="polite"></div>
+      <div id="accountSettingsActions">
+        <button id="accountSettingsSignOut" type="button">Sign out</button>
+        <button id="accountSettingsSave" type="button">Save</button>
+      </div>
+    </section>
   </div>
   <div id="wordsGridHeaderOutline" role="search">
     <svg id="wordsGridSearchIcon" viewBox="0 0 24 24" aria-hidden="true">
@@ -633,7 +825,7 @@
   <script src="phrase-data.js?v=ten-units-3"></script>
   <script src="xp-system.js?v=xp-animation-duration-1"></script>
   <script src="progress-backup.js?v=6"></script>
-  <script src="account-sync.js?v=1"></script>
+  <script src="account-sync.js?v=2"></script>
   <script src="script.js?v=xp-animation-1"></script>
 </body>
 </html>

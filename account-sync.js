@@ -8,11 +8,28 @@
   const SESSION_KEY = 'cnreaderAccountSession';
   const HYDRATED_USER_KEY = 'cnreaderAccountHydratedUser';
   const SYNC_DELAY_MS = 800;
+  const ACCOUNT_SETTINGS_CLOSE_DURATION_MS = 70;
+  const ACCOUNT_SETTINGS_BLUR_AMOUNT = 5;
   let initializing = null;
   let syncTimer = null;
   let restoringProgress = false;
   let accountButton = null;
   let accountStatus = null;
+  let accountAvatar = null;
+  let accountName = null;
+  let accountEmail = null;
+  let accountGuestLabel = null;
+  let accountProfile = null;
+  let accountSettingsOverlay = null;
+  let accountSettingsWindow = null;
+  let accountSettingsClose = null;
+  let accountSettingsName = null;
+  let accountSettingsEmail = null;
+  let accountSettingsAvatar = null;
+  let accountSettingsSave = null;
+  let accountSettingsSignOut = null;
+  let accountSettingsMessage = null;
+  let accountSettingsAnimationFrame = null;
 
   const progressStore = global.CNReaderProgressStore;
   if (!progressStore) {
@@ -122,17 +139,176 @@
     if (accountStatus) accountStatus.textContent = message || '';
   }
 
+  async function loadAccountProfile(session) {
+    if (!accountName || !accountEmail || !accountAvatar) return null;
+    const response = await fetch(CONFIG.projectUrl + '/auth/v1/user', {
+      headers: authHeaders(session),
+    });
+    return responseJson(response);
+  }
+
+  function getAccountDetails(session) {
+    const payload = decodeJwtPayload(session && session.access_token) || {};
+    const metadata = accountProfile && accountProfile.user_metadata || {};
+    const email = accountProfile && accountProfile.email || payload.email || '';
+    return {
+      name: metadata.full_name || metadata.name || email || 'Signed in',
+      email: email,
+      avatarUrl: metadata.avatar_url || metadata.picture || '',
+    };
+  }
+
   function updateAccountControl() {
     if (!accountButton) return;
     const session = getSession();
     if (!session) {
-      accountButton.textContent = 'Sign in with Google';
+      accountProfile = null;
+      accountButton.removeAttribute('data-signed-in');
       accountButton.setAttribute('aria-label', 'Sign in with Google');
+      if (accountGuestLabel) accountGuestLabel.hidden = false;
+      if (accountAvatar) {
+        accountAvatar.hidden = true;
+        accountAvatar.removeAttribute('src');
+      }
+      if (accountName) accountName.textContent = '';
+      if (accountEmail) accountEmail.textContent = '';
       return;
     }
-    const payload = decodeJwtPayload(session.access_token) || {};
-    accountButton.textContent = payload.email ? 'Sign out (' + payload.email + ')' : 'Sign out';
-    accountButton.setAttribute('aria-label', 'Sign out');
+    const details = getAccountDetails(session);
+    accountButton.setAttribute('data-signed-in', 'true');
+    accountButton.setAttribute('aria-label', 'Account settings for ' + (details.name || details.email));
+    if (accountGuestLabel) accountGuestLabel.hidden = true;
+    if (accountName) accountName.textContent = details.name;
+    if (accountEmail) accountEmail.textContent = details.email;
+    if (accountAvatar) {
+      accountAvatar.hidden = !details.avatarUrl;
+      if (details.avatarUrl) accountAvatar.src = details.avatarUrl;
+      else accountAvatar.removeAttribute('src');
+    }
+  }
+
+  function setAccountSettingsMessage(message) {
+    if (accountSettingsMessage) accountSettingsMessage.textContent = message || '';
+  }
+
+  function scheduleAccountSettingsFrame(callback) {
+    if (typeof global.requestAnimationFrame === 'function') {
+      return global.requestAnimationFrame(callback);
+    }
+    return global.setTimeout(callback, 0);
+  }
+
+  function cancelAccountSettingsFrame() {
+    if (accountSettingsAnimationFrame === null) return;
+    if (typeof global.cancelAnimationFrame === 'function') {
+      global.cancelAnimationFrame(accountSettingsAnimationFrame);
+    } else {
+      global.clearTimeout(accountSettingsAnimationFrame);
+    }
+    accountSettingsAnimationFrame = null;
+  }
+
+  function openAccountSettings() {
+    const session = getSession();
+    if (!session || !accountSettingsOverlay || !accountSettingsWindow || !accountSettingsName) return;
+    const details = getAccountDetails(session);
+    cancelAccountSettingsFrame();
+    accountSettingsName.value = details.name;
+    if (accountSettingsEmail) accountSettingsEmail.textContent = details.email;
+    if (accountSettingsAvatar) {
+      accountSettingsAvatar.hidden = !details.avatarUrl;
+      if (details.avatarUrl) accountSettingsAvatar.src = details.avatarUrl;
+      else accountSettingsAvatar.removeAttribute('src');
+    }
+    setAccountSettingsMessage('');
+    const rect = accountButton && accountButton.getBoundingClientRect();
+    const centerX = global.innerWidth / 2;
+    const centerY = global.innerHeight / 2;
+    const originX = rect ? rect.left + rect.width / 2 - centerX : 0;
+    const originY = rect ? rect.top + rect.height / 2 - centerY : 0;
+    accountSettingsOverlay.style.display = 'flex';
+    accountSettingsOverlay.setAttribute('aria-hidden', 'false');
+    accountSettingsWindow.style.transition = 'transform 0.1s linear';
+    accountSettingsOverlay.style.transition = 'backdrop-filter 0.1s linear, -webkit-backdrop-filter 0.1s linear';
+    accountSettingsWindow.style.transform = 'translate(' + originX + 'px, ' + originY + 'px) scale(0)';
+    accountSettingsOverlay.style.backdropFilter = 'blur(0px)';
+    accountSettingsOverlay.style.webkitBackdropFilter = 'blur(0px)';
+    accountSettingsAnimationFrame = scheduleAccountSettingsFrame(function () {
+      accountSettingsWindow.style.transform = 'translate(0px, 0px) scale(1)';
+      accountSettingsOverlay.style.backdropFilter = 'blur(' + ACCOUNT_SETTINGS_BLUR_AMOUNT + 'px)';
+      accountSettingsOverlay.style.webkitBackdropFilter = 'blur(' + ACCOUNT_SETTINGS_BLUR_AMOUNT + 'px)';
+      accountSettingsAnimationFrame = null;
+      if (accountSettingsName && typeof accountSettingsName.focus === 'function') accountSettingsName.focus();
+    });
+  }
+
+  function closeAccountSettings() {
+    if (!accountSettingsOverlay || !accountSettingsWindow || accountSettingsOverlay.style.display !== 'flex') return;
+    cancelAccountSettingsFrame();
+    accountSettingsWindow.style.transition = 'none';
+    accountSettingsOverlay.style.transition = 'none';
+    let startTime = null;
+
+    function animateClose(timestamp) {
+      if (!startTime) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+      const progress = Math.min(elapsed / ACCOUNT_SETTINGS_CLOSE_DURATION_MS, 1);
+      const scale = 1 - progress;
+      const blur = ACCOUNT_SETTINGS_BLUR_AMOUNT * (1 - progress);
+      accountSettingsWindow.style.transform = 'scale(' + scale + ')';
+      accountSettingsOverlay.style.backdropFilter = 'blur(' + blur + 'px)';
+      accountSettingsOverlay.style.webkitBackdropFilter = 'blur(' + blur + 'px)';
+
+      if (progress < 1) {
+        accountSettingsAnimationFrame = scheduleAccountSettingsFrame(animateClose);
+      } else {
+        accountSettingsOverlay.style.display = 'none';
+        accountSettingsOverlay.setAttribute('aria-hidden', 'true');
+        accountSettingsWindow.style.transform = '';
+        accountSettingsOverlay.style.backdropFilter = '';
+        accountSettingsOverlay.style.webkitBackdropFilter = '';
+        accountSettingsWindow.style.transition = '';
+        accountSettingsOverlay.style.transition = '';
+        accountSettingsAnimationFrame = null;
+      }
+    }
+
+    accountSettingsAnimationFrame = scheduleAccountSettingsFrame(animateClose);
+  }
+
+  async function saveAccountProfile() {
+    const stored = getSession();
+    const name = String(accountSettingsName && accountSettingsName.value || '').trim();
+    if (!stored || !name) {
+      setAccountSettingsMessage('Enter a display name before saving.');
+      return false;
+    }
+    if (accountSettingsSave) accountSettingsSave.disabled = true;
+    setAccountSettingsMessage('');
+    try {
+      const session = await refreshSessionIfNeeded(stored);
+      const response = await fetch(CONFIG.projectUrl + '/auth/v1/user', {
+        method: 'PUT',
+        headers: authHeaders(session, true),
+        body: JSON.stringify({ data: { full_name: name } }),
+      });
+      const updated = await responseJson(response);
+      const updatedUser = updated && updated.user || updated || {};
+      const currentMetadata = accountProfile && accountProfile.user_metadata || {};
+      accountProfile = Object.assign({}, accountProfile || {}, updatedUser, {
+        email: updatedUser.email || accountProfile && accountProfile.email || getAccountDetails(session).email,
+        user_metadata: Object.assign({}, currentMetadata, updatedUser.user_metadata || {}, { full_name: name }),
+      });
+      updateAccountControl();
+      setAccountSettingsMessage('Saved.');
+      return true;
+    } catch (error) {
+      setAccountSettingsMessage('Your name could not be saved. Please try again.');
+      console.warn('CNReader account name could not be saved:', error);
+      return false;
+    } finally {
+      if (accountSettingsSave) accountSettingsSave.disabled = false;
+    }
   }
 
   function scheduleSync() {
@@ -186,6 +362,13 @@
         const session = await refreshSessionIfNeeded(stored);
         const userId = getUserId(session);
         const cloudProgress = await loadCloudProgress(session);
+        try {
+          accountProfile = await loadAccountProfile(session);
+        } catch (error) {
+          accountProfile = null;
+          console.warn('CNReader account profile could not be loaded:', error);
+        }
+        updateAccountControl();
         if (cloudProgress) {
           if (userId && localStorage.getItem(HYDRATED_USER_KEY) !== userId) {
             restoringProgress = true;
@@ -195,12 +378,10 @@
               restoringProgress = false;
             }
             localStorage.setItem(HYDRATED_USER_KEY, userId);
-            setAccountStatus('Progress restored from your account');
             updateAccountControl();
             global.location.reload();
             return true;
           }
-          setAccountStatus('Progress restored from your account');
         } else {
           await saveCloudProgress(session);
           if (userId) localStorage.setItem(HYDRATED_USER_KEY, userId);
@@ -237,6 +418,7 @@
       console.warn('CNReader cloud progress could not be saved before sign-out:', error);
     }
     clearSession();
+    accountProfile = null;
     localStorage.removeItem(HYDRATED_USER_KEY);
     updateAccountControl();
     setAccountStatus('Signed out. Progress stays on this device until another account is used.');
@@ -245,10 +427,39 @@
   function bindAccountControl() {
     accountButton = document.getElementById('accountButton');
     accountStatus = document.getElementById('accountStatus');
+    accountAvatar = document.getElementById('accountAvatar');
+    accountName = document.getElementById('accountName');
+    accountEmail = document.getElementById('accountEmail');
+    accountGuestLabel = document.getElementById('accountGuestLabel');
+    accountSettingsOverlay = document.getElementById('accountSettingsOverlay');
+    accountSettingsWindow = document.getElementById('accountSettingsWindow');
+    accountSettingsClose = document.getElementById('accountSettingsClose');
+    accountSettingsName = document.getElementById('accountSettingsName');
+    accountSettingsEmail = document.getElementById('accountSettingsEmail');
+    accountSettingsAvatar = document.getElementById('accountSettingsAvatar');
+    accountSettingsSave = document.getElementById('accountSettingsSave');
+    accountSettingsSignOut = document.getElementById('accountSettingsSignOut');
+    accountSettingsMessage = document.getElementById('accountSettingsMessage');
     if (!accountButton) return;
     accountButton.addEventListener('click', function () {
-      if (getSession()) signOut();
+      if (getSession()) openAccountSettings();
       else signInWithGoogle();
+    });
+    if (accountSettingsClose) accountSettingsClose.addEventListener('click', closeAccountSettings);
+    if (accountSettingsOverlay) {
+      accountSettingsOverlay.addEventListener('click', function (event) {
+        if (event.target === accountSettingsOverlay) closeAccountSettings();
+      });
+    }
+    if (accountSettingsSave) accountSettingsSave.addEventListener('click', saveAccountProfile);
+    if (accountSettingsSignOut) {
+      accountSettingsSignOut.addEventListener('click', async function () {
+        closeAccountSettings();
+        await signOut();
+      });
+    }
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') closeAccountSettings();
     });
     updateAccountControl();
   }
@@ -260,6 +471,9 @@
     signInWithGoogle: signInWithGoogle,
     signOut: signOut,
     syncNow: syncNow,
+    openSettings: openAccountSettings,
+    closeSettings: closeAccountSettings,
+    saveProfileName: saveAccountProfile,
   });
 
   if (document.readyState === 'loading') {
