@@ -306,8 +306,8 @@ function accountProfile(fullName) {
   assert.match(indexHtml, /id="accountStatus"/, 'The main page must provide accessible account-sync status text');
   assert.match(
     indexHtml,
-    /#accountControl\s*\{[\s\S]*?top:\s*16px;[\s\S]*?left:\s*16px;/,
-    'The account control must be fixed in the top-left corner'
+    /#accountControl\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*16px;[\s\S]*?left:\s*16px;/,
+    'The account control must be page-attached in the top-left corner'
   );
   console.log('account sync tests passed');
 })();
