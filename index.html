@@ -57,6 +57,44 @@
       pointer-events: none;
     }
 
+    #accountControl {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 110;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 5px;
+      font-family: 'Times New Roman', serif;
+    }
+
+    #accountButton {
+      min-height: 32px;
+      padding: 5px 10px;
+      background: white;
+      color: black;
+      border: 1px solid black;
+      border-radius: 4px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 15px;
+    }
+
+    #accountButton:hover,
+    #accountButton:focus-visible {
+      background: black;
+      color: white;
+    }
+
+    #accountStatus {
+      max-width: 250px;
+      min-height: 14px;
+      font-size: 12px;
+      line-height: 1.15;
+      text-align: left;
+    }
+
     #wordsGridSearchIcon,
     #phrasesGridSearchIcon {
       flex: 0 0 auto;
@@ -508,6 +546,10 @@
     <button class="content-mode-label" id="contentModeReading" type="button" role="tab" aria-selected="false" aria-controls="readingContent" data-content-mode="reading" tabindex="-1">Reading</button>
   </div>
   <div id="gridXpOutline" aria-label="Experience points"><span id="gridXpValue">0 XP</span></div>
+  <div id="accountControl">
+    <button id="accountButton" type="button">Sign in with Google</button>
+    <div id="accountStatus" aria-live="polite"></div>
+  </div>
   <div id="wordsGridHeaderOutline" role="search">
     <svg id="wordsGridSearchIcon" viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"></circle>
@@ -590,7 +632,8 @@
   <script src="unit-data.js?v=ten-units-2"></script>
   <script src="phrase-data.js?v=ten-units-3"></script>
   <script src="xp-system.js?v=xp-animation-duration-1"></script>
-  <script src="progress-backup.js?v=5"></script>
+  <script src="progress-backup.js?v=6"></script>
+  <script src="account-sync.js?v=1"></script>
   <script src="script.js?v=xp-animation-1"></script>
 </body>
 </html>

@@ -122,6 +122,34 @@
     return data;
   }
 
+  function readProgressSnapshot() {
+    return {
+      format: BACKUP_FORMAT,
+      version: BACKUP_VERSION,
+      data: readBackupData(),
+    };
+  }
+
+  function validateProgressSnapshot(payload) {
+    if (
+      !payload
+      || payload.format !== BACKUP_FORMAT
+      || payload.version !== BACKUP_VERSION
+      || !payload.data
+      || typeof payload.data !== 'object'
+      || Array.isArray(payload.data)
+    ) {
+      throw new Error('This CNReader progress data uses an unsupported format.');
+    }
+
+    Object.keys(payload.data).forEach(function (key) {
+      if (!isBackupKey(key) || typeof payload.data[key] !== 'string') {
+        throw new Error('This CNReader progress data contains unsupported data.');
+      }
+    });
+    return payload;
+  }
+
   function parseProgressCode(code) {
     const normalizedCode = String(code || '').trim();
     if (!normalizedCode.startsWith(CODE_PREFIX)) {
@@ -135,41 +163,24 @@
       throw new Error('The CNReader progress code is invalid or damaged.');
     }
 
-    if (
-      !payload
-      || payload.format !== BACKUP_FORMAT
-      || payload.version !== BACKUP_VERSION
-      || !payload.data
-      || typeof payload.data !== 'object'
-      || Array.isArray(payload.data)
-    ) {
+    try {
+      return validateProgressSnapshot(payload);
+    } catch (error) {
       throw new Error('This CNReader progress code uses an unsupported format.');
     }
-
-    Object.keys(payload.data).forEach(function (key) {
-      if (!isBackupKey(key) || typeof payload.data[key] !== 'string') {
-        throw new Error('The CNReader progress code contains unsupported data.');
-      }
-    });
-
-    return payload;
   }
 
   function getCNReaderProgressCode() {
-    const payload = {
-      format: BACKUP_FORMAT,
-      version: BACKUP_VERSION,
-      savedAt: new Date().toISOString(),
-      data: readBackupData(),
-    };
+    const payload = readProgressSnapshot();
+    payload.savedAt = new Date().toISOString();
     const code = CODE_PREFIX + encodeBase64Url(JSON.stringify(payload));
     console.log('CNReader progress code (copy the complete line below):');
     console.log(code);
     return code;
   }
 
-  function restoreCNReaderProgress(code, reloadPage) {
-    const payload = parseProgressCode(code);
+  function restoreProgressSnapshot(payload, reloadPage) {
+    validateProgressSnapshot(payload);
     const keysToReplace = new Set(FIXED_BACKUP_KEYS.concat(TRANSIENT_KEYS));
     getStoredKeys().filter(isProgressMapKey).forEach(function (key) {
       keysToReplace.add(key);
@@ -212,6 +223,15 @@
     return true;
   }
 
+  function restoreCNReaderProgress(code, reloadPage) {
+    return restoreProgressSnapshot(parseProgressCode(code), reloadPage);
+  }
+
   global.getCNReaderProgressCode = getCNReaderProgressCode;
   global.restoreCNReaderProgress = restoreCNReaderProgress;
+  global.CNReaderProgressStore = Object.freeze({
+    readSnapshot: readProgressSnapshot,
+    restoreSnapshot: restoreProgressSnapshot,
+    isDurableKey: isBackupKey,
+  });
 })(window);
