@@ -5,7 +5,7 @@
   const ITEMS_PER_QUIZ = 5;
   const MAX_PROGRESS = 6;
   const MAX_BONUS_COUNT = 5;
-  const MAX_SKIP_QUESTIONS = 100;
+  const MAX_SKIP_QUESTIONS = 50;
   const SKIP_PASS_RATIO = 0.95;
   const RANDOM_QUESTION_TYPES = Object.freeze(['mc', 'typing', 'definition']);
 
@@ -95,38 +95,24 @@
   }
 
   function buildSkipIndices(latestSeenIndex, targetIndex, totalItems, randomFn) {
-    const numericLatestSeenIndex = Number(latestSeenIndex);
-    const firstSkippedIndex = Math.max(
-      (Number.isFinite(numericLatestSeenIndex) ? numericLatestSeenIndex : -1) + 1,
-      0
-    );
-    const lastSkippedIndex = Math.min(
-      Math.max(Number(targetIndex) || 0, 0),
-      Math.max(Number(totalItems) || 0, 0)
-    );
-    const indices = [];
-
-    for (let index = firstSkippedIndex; index < lastSkippedIndex; index++) {
-      indices.push(index);
+    const skipLogic = global.CHINESE_READER_SKIP_LOGIC;
+    if (!skipLogic || typeof skipLogic.buildSkipQuizIndices !== 'function') {
+      throw new Error('Expected shared skip quiz logic.');
     }
-
-    if (indices.length <= MAX_SKIP_QUESTIONS) return indices;
-
-    const random = typeof randomFn === 'function' ? randomFn : Math.random;
-    for (let index = indices.length - 1; index > 0; index--) {
-      const swapIndex = Math.floor(random() * (index + 1));
-      const temporary = indices[index];
-      indices[index] = indices[swapIndex];
-      indices[swapIndex] = temporary;
-    }
-    return indices.slice(0, MAX_SKIP_QUESTIONS);
+    return skipLogic.buildSkipQuizIndices(
+      latestSeenIndex,
+      targetIndex,
+      totalItems,
+      randomFn
+    );
   }
 
   function getRandomQuestionType(randomFn) {
-    const random = typeof randomFn === 'function' ? randomFn : Math.random;
-    return RANDOM_QUESTION_TYPES[
-      Math.floor(random() * RANDOM_QUESTION_TYPES.length)
-    ];
+    const skipLogic = global.CHINESE_READER_SKIP_LOGIC;
+    if (!skipLogic || typeof skipLogic.pickRandomQuestionType !== 'function') {
+      throw new Error('Expected shared skip quiz logic.');
+    }
+    return skipLogic.pickRandomQuestionType(RANDOM_QUESTION_TYPES, randomFn);
   }
 
   function getRandomSkipQuestionType(randomFn) {
@@ -134,26 +120,22 @@
   }
 
   function getRequiredSkipCorrectCount(totalQuestions) {
-    const total = Math.max(Math.floor(Number(totalQuestions) || 0), 0);
-    return total ? Math.floor(total * SKIP_PASS_RATIO) + 1 : 1;
+    return global.CHINESE_READER_SKIP_LOGIC.getRequiredSkipCorrectCount(totalQuestions);
   }
 
   function hasPassedSkipQuiz(correctCount, totalQuestions) {
-    return Math.max(Math.floor(Number(correctCount) || 0), 0)
-      >= getRequiredSkipCorrectCount(totalQuestions);
+    return global.CHINESE_READER_SKIP_LOGIC.hasPassedSkipQuiz(
+      correctCount,
+      totalQuestions
+    );
   }
 
   function canStillPassSkipQuiz(correctCount, answeredCount, totalQuestions) {
-    const total = Math.max(Math.floor(Number(totalQuestions) || 0), 0);
-    const answered = Math.min(
-      Math.max(Math.floor(Number(answeredCount) || 0), 0),
-      total
+    return global.CHINESE_READER_SKIP_LOGIC.canStillPassSkipQuiz(
+      correctCount,
+      answeredCount,
+      totalQuestions
     );
-    const correct = Math.min(
-      Math.max(Math.floor(Number(correctCount) || 0), 0),
-      answered
-    );
-    return correct + (total - answered) >= getRequiredSkipCorrectCount(total);
   }
 
   function normalizePinyinAnswer(value) {

@@ -155,6 +155,11 @@ if (!Array.isArray(UNIT_DATA) || UNIT_DATA.length === 0) {
   throw new Error('Expected shared Chinese character unit data.');
 }
 
+const SKIP_LOGIC = window.CHINESE_READER_SKIP_LOGIC;
+if (!SKIP_LOGIC || typeof SKIP_LOGIC.canOfferSkipTarget !== 'function') {
+  throw new Error('Expected shared skip target logic.');
+}
+
 const PHRASE_UNITS = window.CHINESE_READER_PHRASE_UNITS;
 if (!Array.isArray(PHRASE_UNITS) || PHRASE_UNITS.length === 0) {
   throw new Error('Expected shared Chinese phrase unit data.');
@@ -2586,7 +2591,7 @@ gridCanvas.addEventListener('click', function (e) {
   popupExamples.style.display = 'block';
   popupExamples.innerHTML = selectedUnitData.examples[idx].join('<br>');
 
-  // Show the skip button from 35 positions after the latest seen word onward.
+  // Show the skip button once 50 new words, including the target, are available.
   // Find the latest global index with any progress entry across all units
   var latestSeenGlobal = -1;
   var goff = 0;
@@ -2594,7 +2599,7 @@ gridCanvas.addEventListener('click', function (e) {
     var key = u === 0 ? 'charProgress' : 'charProgress_' + u;
     var unitProgress = JSON.parse(localStorage.getItem(key) || '{}');
     for (var k in unitProgress) {
-      if (unitProgress.hasOwnProperty(k)) {
+      if (unitProgress.hasOwnProperty(k) && (Number(unitProgress[k]) || 0) > 0) {
         var globalIdx = goff + parseInt(k, 10);
         if (globalIdx > latestSeenGlobal) {
           latestSeenGlobal = globalIdx;
@@ -2603,8 +2608,6 @@ gridCanvas.addEventListener('click', function (e) {
     }
     goff += UNIT_DATA[u].characters.length;
   }
-  // Skip becomes available starting 35 positions after the latest seen word.
-  var skipThreshold = latestSeenGlobal + 35;
   // Calculate the current unit's starting global index using actual character counts
   var currentUnit = selectedUnitIndex;
   if (isNaN(currentUnit)) currentUnit = 0;
@@ -2612,13 +2615,16 @@ gridCanvas.addEventListener('click', function (e) {
   for (var u = 0; u < currentUnit; u++) {
     currentUnitOffset += UNIT_DATA[u].characters.length;
   }
-  var unitThreshold = skipThreshold - currentUnitOffset;
-  var charCount = selectedUnitData.characters.length;
-  var showSkip = idx >= unitThreshold && unitThreshold >= 0 && unitThreshold < charCount;
+  var selectedGlobalIndex = currentUnitOffset + idx;
+  var showSkip = SKIP_LOGIC.canOfferSkipTarget(
+    selectedGlobalIndex,
+    latestSeenGlobal,
+    goff
+  );
   popupSkipBtn.style.display = showSkip ? 'flex' : 'none';
   // Store the global target index for the Yes button handler
   if (showSkip) {
-    popupSkipBtn._skipTargetGlobal = currentUnitOffset + idx;
+    popupSkipBtn._skipTargetGlobal = selectedGlobalIndex;
     popupSkipBtn._skipMode = 'words';
   }
 
@@ -2681,10 +2687,11 @@ phrasesGridCanvas.addEventListener('click', function (event) {
     selectedUnitOffset += PHRASE_UNITS[unitIndex].phrases.length;
   }
   const selectedGlobalIndex = selectedUnitOffset + index;
-  const skipThreshold = latestSeenGlobal + 35;
-  const showSkip = selectedGlobalIndex >= skipThreshold
-    && skipThreshold >= 0
-    && skipThreshold < globalOffset;
+  const showSkip = SKIP_LOGIC.canOfferSkipTarget(
+    selectedGlobalIndex,
+    latestSeenGlobal,
+    globalOffset
+  );
   popupSkipBtn.style.display = showSkip ? 'flex' : 'none';
   if (showSkip) {
     popupSkipBtn._skipTargetGlobal = selectedGlobalIndex;

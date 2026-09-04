@@ -3027,6 +3027,8 @@ function createQuizRunner(config) {
 
 window.CHINESE_READER_QUIZ_TEST_API = Object.freeze({
   createQuizRunner: createQuizRunner,
+  buildSkipQuizQuestions: buildSkipQuizQuestions,
+  completeSkippedWords: completeSkippedWords,
 });
 
 function startRegularQuizPage() {
@@ -3255,6 +3257,7 @@ function getLatestSeenGlobalIndex() {
 
     for (const key in progress) {
       if (!Object.prototype.hasOwnProperty.call(progress, key)) continue;
+      if ((Number(progress[key]) || 0) <= 0) continue;
       const globalIndex = globalOffset + parseInt(key, 10);
       if (globalIndex > latestSeenGlobal) {
         latestSeenGlobal = globalIndex;
@@ -3267,52 +3270,44 @@ function getLatestSeenGlobalIndex() {
   return latestSeenGlobal;
 }
 
-function buildSkipQuizQuestions(targetGlobal) {
-  const skipWords = [];
-  const maxSkipQuestions = 50;
-  const latestSeenGlobal = getLatestSeenGlobalIndex();
-
-  for (let globalIndex = latestSeenGlobal + 1; globalIndex < targetGlobal && skipWords.length < maxSkipQuestions; globalIndex++) {
-    skipWords.push(globalIndex);
+function buildSkipQuizQuestions(targetGlobal, startingLatestSeenGlobal) {
+  const latestSeenGlobal = Number.isInteger(startingLatestSeenGlobal)
+    ? startingLatestSeenGlobal
+    : getLatestSeenGlobalIndex();
+  const skipLogic = window.CHINESE_READER_SKIP_LOGIC;
+  if (!skipLogic || typeof skipLogic.buildSkipQuizIndices !== 'function') {
+    throw new Error('Expected shared skip quiz logic.');
   }
-
-  if (skipWords.length < maxSkipQuestions) {
-    const incompleteWords = [];
-    let globalOffset = 0;
-
-    for (let unit = 0; unit < UNIT_DATA.length; unit++) {
-      const progress = JSON.parse(localStorage.getItem(getProgressKeyForUnit(unit)) || '{}');
-
-      for (const key in progress) {
-        if (!Object.prototype.hasOwnProperty.call(progress, key)) continue;
-
-        const value = parseInt(progress[key], 10);
-        const globalIndex = globalOffset + parseInt(key, 10);
-        if (value > 0 && value < 6 && skipWords.indexOf(globalIndex) === -1) {
-          incompleteWords.push(globalIndex);
-        }
-      }
-
-      globalOffset += UNIT_DATA[unit].characters.length;
-    }
-
-    shuffleInPlace(incompleteWords);
-    const remaining = maxSkipQuestions - skipWords.length;
-    skipWords.push.apply(skipWords, incompleteWords.slice(0, remaining));
-  }
+  const skipWords = skipLogic.buildSkipQuizIndices(
+    latestSeenGlobal,
+    targetGlobal,
+    getTotalCharacterCount(),
+    Math.random
+  );
 
   return skipWords.map(function (globalIndex) {
     const info = getUnitLocalForGlobal(globalIndex);
-    const type = Math.random() < 0.5 ? 'mc' : 'typing';
+    const type = skipLogic.pickRandomQuestionType(['mc', 'typing'], Math.random);
     return makeUnitQuestion(info.unit, info.localIndex, type, globalIndex);
   });
 }
 
-function completeSkippedWords(targetGlobal) {
-  const latestSeenGlobal = getLatestSeenGlobalIndex();
+function completeSkippedWords(targetGlobal, startingLatestSeenGlobal) {
+  const latestSeenGlobal = Number.isInteger(startingLatestSeenGlobal)
+    ? startingLatestSeenGlobal
+    : getLatestSeenGlobalIndex();
+  const skipLogic = window.CHINESE_READER_SKIP_LOGIC;
+  if (!skipLogic || typeof skipLogic.buildSkipRangeIndices !== 'function') {
+    throw new Error('Expected shared skip quiz logic.');
+  }
   const byUnit = {};
+  const skippedWords = skipLogic.buildSkipRangeIndices(
+    latestSeenGlobal,
+    targetGlobal,
+    getTotalCharacterCount()
+  );
 
-  for (let globalIndex = latestSeenGlobal + 1; globalIndex < targetGlobal; globalIndex++) {
+  for (const globalIndex of skippedWords) {
     const info = getUnitLocalForGlobal(globalIndex);
     if (!byUnit[info.unit]) byUnit[info.unit] = [];
     byUnit[info.unit].push(info.localIndex);
@@ -3334,18 +3329,24 @@ function startSkipQuizPage() {
   localStorage.removeItem('skipQuizActive');
   const targetGlobal = parseInt(localStorage.getItem('skipQuizTarget') || '0', 10);
   localStorage.removeItem('skipQuizTarget');
+  const latestSeenGlobal = getLatestSeenGlobalIndex();
+  const skipLogic = window.CHINESE_READER_SKIP_LOGIC;
 
   const xpTotalBefore = getCurrentXpTotal();
   createQuizRunner({
     canvasId: 'quizCanvas',
     inputId: 'typingInput',
-    questions: buildSkipQuizQuestions(targetGlobal),
+    questions: buildSkipQuizQuestions(targetGlobal, latestSeenGlobal),
+    shouldFinishEarly: function (result) {
+      return !skipLogic.canStillPassSkipQuiz(
+        result.correctItems.length,
+        result.answeredCount,
+        result.questions.length
+      );
+    },
     onFinish: function (result) {
-      const total = result.questions.length;
-      const percentage = total > 0 ? (result.correctItems.length / total) * 100 : 0;
-
-      if (percentage >= 95) {
-        completeSkippedWords(targetGlobal);
+      if (skipLogic.hasPassedSkipQuiz(result.correctItems.length, result.questions.length)) {
+        completeSkippedWords(targetGlobal, latestSeenGlobal);
       }
       const sessionXp = getCurrentXpTotal() - xpTotalBefore;
       showMissedWordsPage(
@@ -4031,11 +4032,19 @@ function startPhraseQuizPage() {
     return question;
   }
 
-  function completeSkippedPhrases(firstSkippedGlobal, targetGlobal) {
+  function completeSkippedPhrases(latestSeenGlobal, targetGlobal) {
     const progressByUnit = {};
-    const finalTarget = Math.min(Math.max(targetGlobal, 0), flatData.total);
+    const skipLogic = window.CHINESE_READER_SKIP_LOGIC;
+    if (!skipLogic || typeof skipLogic.buildSkipRangeIndices !== 'function') {
+      throw new Error('Expected shared skip quiz logic.');
+    }
+    const skippedPhrases = skipLogic.buildSkipRangeIndices(
+      latestSeenGlobal,
+      targetGlobal,
+      flatData.total
+    );
 
-    for (let globalIndex = firstSkippedGlobal; globalIndex < finalTarget; globalIndex++) {
+    skippedPhrases.forEach(function (globalIndex) {
       const info = getPhraseUnitLocal(globalIndex);
       if (!progressByUnit[info.unit]) {
         progressByUnit[info.unit] = JSON.parse(
@@ -4043,7 +4052,7 @@ function startPhraseQuizPage() {
         );
       }
       progressByUnit[info.unit][String(info.localIndex)] = logic.MAX_PROGRESS;
-    }
+    });
 
     Object.keys(progressByUnit).forEach(function (unit) {
       localStorage.setItem(
@@ -4052,7 +4061,13 @@ function startPhraseQuizPage() {
       );
     });
 
-    const nextPhraseIndex = Math.min(finalTarget, Math.max(flatData.total - 1, 0));
+    const completedTarget = skippedPhrases.length
+      ? skippedPhrases[skippedPhrases.length - 1]
+      : latestSeenGlobal;
+    const nextPhraseIndex = Math.min(
+      completedTarget + 1,
+      Math.max(flatData.total - 1, 0)
+    );
     const nextSection = Math.floor(nextPhraseIndex / logic.SECTION_SIZE);
     const nextPosition = Math.floor(
       (nextPhraseIndex % logic.SECTION_SIZE) / logic.ITEMS_PER_QUIZ
@@ -4070,7 +4085,6 @@ function startPhraseQuizPage() {
     localStorage.removeItem('phraseSkipQuizTarget');
 
     const latestSeenGlobal = getLatestSeenPhraseGlobalIndex();
-    const firstSkippedGlobal = latestSeenGlobal + 1;
     const skipIndices = logic.buildSkipIndices(
       latestSeenGlobal,
       targetGlobal,
@@ -4118,7 +4132,7 @@ function startPhraseQuizPage() {
       },
       onFinish: function (result) {
         if (logic.hasPassedSkipQuiz(result.correctItems.length, result.questions.length)) {
-          completeSkippedPhrases(firstSkippedGlobal, targetGlobal);
+          completeSkippedPhrases(latestSeenGlobal, targetGlobal);
         }
         const sessionXp = getCurrentXpTotal() - xpTotalBefore;
         showMissedWordsPage(
